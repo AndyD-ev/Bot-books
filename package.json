@@ -1,0 +1,28 @@
+{
+  "name": "api-books",
+  "version": "1.0.0",
+  "description": "Creación de un bot desde telegram, bajo la integración de una API en node.js para la inserción de registro de libros en una BD",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AndyD-ev/Bot-books.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/AndyD-ev/Bot-books/issues"
+  },
+  "homepage": "https://github.com/AndyD-ev/Bot-books#readme",
+  "dependencies": {
+    "@notionhq/client": "^2.2.3",
+    "dotenv": "^17.4.0",
+    "express": "^4.18.2",
+    "morgan": "^1.10.1",
+    "nodemon": "^3.1.14"
+  }
+}
