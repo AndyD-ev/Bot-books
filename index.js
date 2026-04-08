@@ -2,6 +2,8 @@ require("dotenv").config(); //lee ardhivo .env y carga variables (token, ID, etc
 
 
 //herramientas:
+
+
 const express = require("express"); //para las rutas y crearAPI
 
 const { Client } = require("@notionhq/client");//para conectar con Notion API
@@ -54,55 +56,88 @@ res.json(libros);
 });
 
 
-
-
 //RUTA ESPECIAL PARA BUSCAR LIBRO 
-app.get("/libros/search", async (req, res) => { //ruta GET para obtener un libro por ID
-try { //intenta ejecutar código.
-  const { query } = req.query; //query es el parámetro que enviamos en la URL (ej: /libros/search?query=LI-1)
-    console.log(" GET/libros/search");
+app.get("/libros/search", async (req, res) => {//ruta GET para obtener un libro por nombre, género, autor,id
+
+  try {//intenta ejecutar código.
+    console.log("GET /libros/search");
+
+    const { libro, autor, genero, id_visual} = req.query;//query es el parámetro que enviamos 
+    // en la URL (ej: /libros/search?query=LI-1)
 
   //Creación del filtro para notion
-  const response = await notion.databases.query({
-  database_id: process.env.DATABASE_ID,
-  filter: {
-    property: "Libro",
-    title: {
-      contains: query //Busca en el campo libro lo que tenga la palabra del query
+    const filters = [];
+
+    // 📚 filtro por libro
+    if (libro) {
+      filters.push({
+        property: "Libro",
+        title: {
+          contains: libro  //Busca en el campo libro lo que tenga la palabra del query
+        }
+      });
     }
-  }
-});
-  
-  console.log("Libros encontrados:");
 
-  const libros = response.results.map((page) => {
-  const props = page.properties;
+    // ✍️ filtro por autor
+    if (autor) {
+      filters.push({
+        property: "Autor",
+        rich_text: {
+          contains: autor
+        }
+      });
+    }
 
-  return {
-    id_visual: `${props.ID.unique_id.prefix}-${props.ID.unique_id.number}`, // LI-1
-    libro: props.Libro.title[0]?.plain_text,
-    autor: props.Autor.rich_text[0]?.plain_text,
-    año: props["Año"].select?.name,
-    genero: props["Género"].multi_select.map(g => g.name),
-    status: props.Status.select?.name
-  };
-});
-  
-res.json({
-  ok: true,
-  total: libros.length,
-  mensaje: `Se encontraron ${libros.length} libro(s) para la búsqueda "${query}"`,
-  data: libros
-});
+    // 🎭 filtro por género
+    if (genero) {
+      filters.push({
+        property: "Género",
+        multi_select: {
+          contains: genero
+        }
+      });
+    }
+    if (id_visual) {
+      filters.push({
+        property: "ID",
+        unique_id: {
+          equals: parseInt(id_visual.split("-")[1])
+        }
+      });
+    }
 
+    const response = await notion.databases.query({
+      database_id: process.env.DATABASE_ID,
+      filter: filters.length > 0 ? { and: filters } : undefined
+    });
 
-  } catch (error) { //si algo alla, captura el error
+    const libros = response.results.map((page) => {
+      const props = page.properties;
+
+      return {
+        id_visual: `${props.ID.unique_id.prefix}-${props.ID.unique_id.number}`,
+        libro: props.Libro.title[0]?.plain_text,
+        autor: props.Autor.rich_text[0]?.plain_text || "Sin autor",
+        año: props["Año"].select?.name,
+        genero: props["Género"].multi_select?.map(g => g.name) || [],
+        status: props.Status.select?.name
+      };
+    });
+    //para que no nos devuelva un array vacío, sino un mensaje más amigable
+    res.json({
+      ok: true,
+      total: libros.length,
+      mensaje: `Se encontraron ${libros.length} resultado(s)`,
+      data: libros
+    });
+
+  } catch (error) {//si algo alla, captura el error 
     console.error("ERROR GET/SEARCH:");
-    console.error(error.message);
-    res.status(500).json({ error: "Error en la búsqueda de libros" });//si algo Falla, responde con este error
+    res.status(500).json({ error: "Error en búsqueda" });
   }
-
 });
+
+
 
 
 
@@ -233,49 +268,147 @@ console.log("GENEROS:", generos);
   }
 });
 
+//IMPLEMENTACIÓN DE TELEGRAM
+const TelegramBot = require("node-telegram-bot-api");
+const bot = new TelegramBot(process.env.TELEGRAM_TOKEN, {
+  polling: true
+});
+
+//bot.on("message", (msg) => {
+  //bot.sendMessage(msg.chat.id, "🔥 ya estoy conectado");
+//});
+
+const axios = require("axios");
+//BUSCAR LIBROS
+bot.onText(/\/buscar (.+)/, async (msg, match) => {
+  const chatId = msg.chat.id;
+  const texto = match[1];
+
+  let url = "http://localhost:3000/libros/search?";
+
+  if (texto.startsWith("autor:")) {
+    const valor = texto.replace("autor:", "");
+    url += `autor=${valor}`;
+  } else if (texto.startsWith("genero:")) {
+    const valor = texto.replace("genero:", "");
+    url += `genero=${valor}`;
+  } else if (texto.startsWith("libro:")) {
+    const valor = texto.replace("libro:", "");
+    url += `libro=${valor}`;
+  } else {
+    // fallback → busca por libro
+    url += `libro=${texto}`;
+  }
+
+  try {
+    const res = await axios.get(url);
+    const libros = res.data.data;
+
+    if (libros.length === 0) {
+      return bot.sendMessage(chatId, "No encontré nada 😢");
+    }
+
+    let respuesta = "📚 Resultados:\n\n";
+
+    libros.forEach((l) => {
+      respuesta += `📚 Libro: ${l.libro}\n`;
+      respuesta += `✍️ Autor: ${l.autor || "—"}\n`;
+      respuesta += `📅 Año: ${l.año || "—"}\n`;
+      respuesta += `🎭 Género: ${l.genero.join(", ") || "—"}\n`;
+      respuesta += `📌 Status: ${l.status || "—"}\n`;
+      respuesta += `---------------------\n\n`;
+    });
+
+    bot.sendMessage(chatId, respuesta);
+
+  } catch (error) {
+    bot.sendMessage(chatId, "Error al buscar 😵");
+  }
+});
+
+//HACER UNO DE  COMBINACIONES
+// /buscar autor:rowling genero:fantasia
 
 
+//Anque sólo ponga un género, mira te comparto mi código:
+// Crear libro --creación de un ENDPOINT  Enviar datos desde telegram/postman
+app.post("/libros", async (req, res) => {
+  try {
+    console.log("📥 POST /libros");
+    console.log("BODY:", req.body);
 
+    //LOS NOMBRES LOS DEFINIMOS NOSOTROS, NO SON DEL NOTION
+    const { libro, autor, año, generos, status } = req.body; //req.body es el json que enviamos desde postman/telegram
+      //lo de arriba, son los nombres provenientes del JSON (postma)
+console.log("GENEROS:", generos);
+    const response = await notion.pages.create({ //desde await = a estás creando una fila en BD
+      parent: { database_id: process.env.DATABASE_ID }, //Guárdalo en esta BD
+      properties: {
+        //"Libro" = nombre en NOTION
+        //libro = variable de la API
+        "Libro": {
+          title: [{ text: { content: libro } }],
+        },
+        "Autor": {
+          rich_text: [{ text: { content: autor } }],
+        },
+        "Año": {
+          select: { name: año },
+        },
+        "Género": {
+          multi_select: (generos || []).map((g) => ({ name: g })),
+        },  
+        "Status": {
+          select: { name: status },
+        },
+      },
+    });console.log("Libro creado ");
+    //res.json({ ok: true, data: response }); //respuesta o lo que devuelve postman
+    res.json({
+    ok: true,
+    id: response.id_visual,
+    //id: response.id,
+    libro: libro,
+    autor: autor,
+    mensaje: "Libro creado correctamente"
+  });
 
+  } catch (error) {  
+    console.error("ERROR POST:");
+    console.error(error.message); //Si algo alla,no se rompe sino devuelve respuesta de error
+    res.status(500).json({ error: "Error al crear libro" });
+  }
+});  
 
+//CON POSTMAN FUNCIONÓ COMO ANTERIOMENTE Y AHORA, LO NUEVO PARA TELEGRAM ESTA ASÍ:
+bot.onText(/\/crear (.+)/, async (msg, match) => {
+  const chatId = msg.chat.id;
+  const texto = match[1];
 
+//separa los datos
+  const partes = texto.split(",");
 
+  //Asignar variables
+  const [libro, autor, año, genero, status] = partes;
 
+  //Hacer petición a la API para crear el libro
+  try {
+  const res = await axios.post("http://localhost:3000/libros", {
+    libro: libro.trim(),
+    autor: autor.trim(), //trim quita espacios extra
+    año: año.trim(),
+    generos: genero.split("|").map(g => g.trim()),
+    status: status.trim()
+  });
 
+  //RESPUESTA EN TELEGRAM
+    bot.sendMessage(chatId, `✅ Libro "${libro}" creado correctamente`);
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+  } catch (error) {
+  console.error(error.message);
+  bot.sendMessage(chatId, "Error al crear libro 😵");
+}
+});
 
 
 
