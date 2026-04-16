@@ -112,7 +112,7 @@ app.get("/libros/search", async (req, res) => {//ruta GET para obtener un libro 
     });
 
     const libros = response.results.map((page) => {
-      const props = page.properties;
+    const props = page.properties;
 
       return {
         id_visual: `${props.ID.unique_id.prefix}-${props.ID.unique_id.number}`,
@@ -142,6 +142,7 @@ app.get("/libros/search", async (req, res) => {//ruta GET para obtener un libro 
 
 
 
+
 // Crear libro --creación de un ENDPOINT  Enviar datos desde telegram/postman
 app.post("/libros", async (req, res) => {
   try {
@@ -150,9 +151,49 @@ app.post("/libros", async (req, res) => {
 
 
     //LOS NOMBRES LOS DEFINIMOS NOSOTROS, NO SON DEL NOTION
-    const { libro, autor, año, generos, status } = req.body; //req.body es el json que enviamos desde postman/telegram
+    const { libro, autor, año, generos, status, duplicado } = req.body; //req.body es el json que enviamos desde postman/telegram
       //lo de arriba, son los nombres provenientes del JSON (postma) 
-console.log("GENEROS:", generos);
+    //console.log("GENEROS:", generos);
+//......................
+    // 🔥 1. NORMALIZAR (para evitar mayúsculas/minúsculas)
+    const libroNormalizado = libro?.toLowerCase().trim();
+
+    // 🔍 2. BUSCAR SI YA EXISTE
+    const existe = await notion.databases.query({
+      database_id: process.env.DATABASE_ID,
+      filter: {
+        property: "Libro",
+        title: {
+          contains: libroNormalizado
+        }
+      }
+    });
+
+    // 🚫 3. VALIDAR DUPLICADO
+    if (existe.results.length > 0 && !duplicado) {
+      console.log("⚠️ DUPLICADO DETECTADO");
+
+      /*return res.json({
+        ok: false,
+        duplicado: true,
+        mensaje: `El libro "${libro}" ya existe`
+      });
+    }*/
+
+    return res.json({
+    ok: false,
+    duplicado: true,
+    libro: libro,
+    existente: existe.results.map(p => ({
+      libro: p.properties.Libro.title[0]?.plain_text,
+      autor: p.properties.Autor.rich_text[0]?.plain_text
+    }))
+  });
+    }
+
+
+//........................
+
     const response = await notion.pages.create({ //desde await = a estás creando una fila en BD
       parent: { database_id: process.env.DATABASE_ID }, //Guárdalo en esta BD 
       properties: {
@@ -194,10 +235,7 @@ console.log("GENEROS:", generos);
   }
 });
 
-
-
-
-    app.patch("/libros/:id_visual", async (req, res) => {
+  app.patch("/libros/:id_visual", async (req, res) => {
   try {
     const { id_visual } = req.params;
     const { libro, autor, año, generos, status } = req.body;
@@ -268,18 +306,28 @@ console.log("GENEROS:", generos);
   }
 });
 
+
+
+
+
+
+
+//______________________________________________________________________________
 //IMPLEMENTACIÓN DE TELEGRAM
+//______________________________________________________________________________
 const TelegramBot = require("node-telegram-bot-api");
 const bot = new TelegramBot(process.env.TELEGRAM_TOKEN, {
   polling: true
 });
 
-//bot.on("message", (msg) => {
-  //bot.sendMessage(msg.chat.id, "🔥 ya estoy conectado");
-//});
+
+
+
 
 const axios = require("axios");
-//BUSCAR LIBROS
+//____________________________________________________________________________
+//---------------------------BUSCAR LIBROS------------------------------------
+//____________________________________________________________________________
 bot.onText(/\/buscar (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
   const texto = match[1];
@@ -329,64 +377,22 @@ bot.onText(/\/buscar (.+)/, async (msg, match) => {
 //HACER UNO DE  COMBINACIONES
 // /buscar autor:rowling genero:fantasia
 
+const pendientes ={};  //creación de una memoria
 
-//Anque sólo ponga un género, mira te comparto mi código:
-// Crear libro --creación de un ENDPOINT  Enviar datos desde telegram/postman
-app.post("/libros", async (req, res) => {
-  try {
-    console.log("📥 POST /libros");
-    console.log("BODY:", req.body);
-
-    //LOS NOMBRES LOS DEFINIMOS NOSOTROS, NO SON DEL NOTION
-    const { libro, autor, año, generos, status } = req.body; //req.body es el json que enviamos desde postman/telegram
-      //lo de arriba, son los nombres provenientes del JSON (postma)
-console.log("GENEROS:", generos);
-    const response = await notion.pages.create({ //desde await = a estás creando una fila en BD
-      parent: { database_id: process.env.DATABASE_ID }, //Guárdalo en esta BD
-      properties: {
-        //"Libro" = nombre en NOTION
-        //libro = variable de la API
-        "Libro": {
-          title: [{ text: { content: libro } }],
-        },
-        "Autor": {
-          rich_text: [{ text: { content: autor } }],
-        },
-        "Año": {
-          select: { name: año },
-        },
-        "Género": {
-          multi_select: (generos || []).map((g) => ({ name: g })),
-        },  
-        "Status": {
-          select: { name: status },
-        },
-      },
-    });console.log("Libro creado ");
-    //res.json({ ok: true, data: response }); //respuesta o lo que devuelve postman
-    res.json({
-    ok: true,
-    id: response.id_visual,
-    //id: response.id,
-    libro: libro,
-    autor: autor,
-    mensaje: "Libro creado correctamente"
-  });
-
-  } catch (error) {  
-    console.error("ERROR POST:");
-    console.error(error.message); //Si algo alla,no se rompe sino devuelve respuesta de error
-    res.status(500).json({ error: "Error al crear libro" });
-  }
-});  
+//____________________________________________________________________________
+//---------------------------CREAR LIBROS------------------------------------
+//____________________________________________________________________________
+// -creación de un ENDPOINT  Enviar datos desde telegram/postman
 
 //CON POSTMAN FUNCIONÓ COMO ANTERIOMENTE Y AHORA, LO NUEVO PARA TELEGRAM ESTA ASÍ:
-bot.onText(/\/crear (.+)/, async (msg, match) => {
+bot.onText(/\/crear\s+(.+)/, async (msg, match) => { //\s+ “uno o más espacios (los que sean 😈)”
   const chatId = msg.chat.id;
   const texto = match[1];
 
-//separa los datos
-  const partes = texto.split(",");
+  
+
+//separa los datos globalmente
+  const partes = texto.split(",").map(p => p.trim());
 
   //Asignar variables
   const [libro, autor, año, genero, status] = partes;
@@ -394,15 +400,47 @@ bot.onText(/\/crear (.+)/, async (msg, match) => {
   //Hacer petición a la API para crear el libro
   try {
   const res = await axios.post("http://localhost:3000/libros", {
-    libro: libro.trim(),
-    autor: autor.trim(), //trim quita espacios extra
-    año: año.trim(),
-    generos: genero.split("|").map(g => g.trim()),
-    status: status.trim()
+    libro: libro?.trim(),
+    autor: autor?.trim(), //trim quita espacios extra
+    año: año?.trim(),
+    generos: genero?.split("|").map(g => g.trim()),
+    status: status?.trim()
+  });
+  
+
+
+  
+// 🔥 AQUÍ ESTÁ LA CLAVE
+if (!res.data.ok) {
+  const existentes = res.data.existente;
+
+  let mensaje = `⚠️ El libro "${libro}" ya existe:\n\n`;
+
+
+  existentes.forEach(l => {
+    mensaje += `📚 ${l.libro} - ${l.autor || "—"}\n`;
   });
 
-  //RESPUESTA EN TELEGRAM
-    bot.sendMessage(chatId, `✅ Libro "${libro}" creado correctamente`);
+  pendientes[chatId] = { libro, autor, año, genero, status };
+
+    mensaje += `\n──────────────\n`;     //PARA AÑADIR MÁS MENSAJES
+    mensaje += `¿Deseas agregarlo de todos modos?\n`;
+  
+  return bot.sendMessage(chatId, mensaje, {
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: "✅ Add", callback_data: "SI"},
+          { text: "❌ Cancel", callback_data: "NO"}
+        ]
+      ]
+    }
+  });
+}
+
+
+// ✅ solo si sí se creó
+bot.sendMessage(chatId, `✅ Libro "${libro}" creado correctamente`);
 
   } catch (error) {
   console.error(error.message);
@@ -412,7 +450,80 @@ bot.onText(/\/crear (.+)/, async (msg, match) => {
 
 
 
+bot.on("message", async (msg) => {
+  console.log("📩 MENSAJE RECIBIDO:", msg.text);
+
+  const chatId = msg.chat.id;
+  const texto = msg.text?.toLowerCase();
+
+  if (!pendientes[chatId]) return;
+
+  if (texto === "si") {
+    const data = pendientes[chatId];
+
+    await axios.post("http://localhost:3000/libros", {
+      libro: data.libro.trim(),
+      autor: data.autor.trim(),
+      año: data.año.trim(),
+      generos: data.genero.split("|").map(g => g.trim()),
+      status: data.status.trim(),
+      forzar: true
+    });
+
+    bot.sendMessage(chatId, "✅ Añadido nuevamente con éxito");
+    delete pendientes[chatId];
+  }
+
+  if (texto === "no") {
+    bot.sendMessage(chatId, "❌ Operación cancelada");
+    delete pendientes[chatId];
+  }
+});
+//HAY QUE CHECAR LO DE ARRIBA
+//YA QUE CUANDO QUIERES DUPLICAR NO DEJA
+/*
+//AGREGUE DE AQUÍ HASTA LPINEEA 519
+bot.on("callback_query", async (query) => {
+  const chatId = query.message.chat.id;
+  const accion = query.data;
+
+  bot.answerCallbackQuery(query.id); // importante
+
+  const data = pendientes[chatId];
+  if (!data) return;
+
+  // 👉 SI
+  if (accion === "SI") {
+    await axios.post("http://localhost:3000/libros", {
+      libro: data.libro.trim(),
+      autor: data.autor.trim(),
+      año: data.año.trim(),
+      generos: data.genero.split("|").map(g => g.trim()),
+      status: data.status.trim(),
+      forzar: true
+    });
+
+    bot.sendMessage(chatId, "✅ Añadido aunque esté duplicado");
+    delete pendientes[chatId];
+  }
+
+  // 👉 NO
+  if (accion === "NO") {
+    bot.sendMessage(chatId, "❌ Operación cancelada");
+    delete pendientes[chatId];
+  }
+});*/
+
+
+/*bot.on("message", (msg) => {
+  console.log("📩 MENSAJE RECIBIDO:", msg.text);
+});*/
+
 // levantar servidor
 app.listen(process.env.PORT, () => {
   console.log("Servidor corriendo en puerto " + process.env.PORT);
+
+  /*bot.on("message", (msg) => {
+  bot.sendMessage(msg.chat.id, "🔥 ya estoy conectado");
+});*/
 });
