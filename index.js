@@ -414,24 +414,32 @@ const pendientes ={};  //creación de una memoria
 //---------------------------OBTENER GÉNEROS------------------------------------
 //____________________________________________________________________________
 // -creación de un ENDPOINT  obtener los géneros desde  telegram
-bot.onText(/\/generos/, async (msg) => {
+bot.onText(/\/genero (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
+  const input = match[1].toLowerCase();
 
   try {
     const res = await axios.get("http://localhost:3000/generos");
     const generos = res.data.data;
 
-    let respuesta = "🎭 Géneros disponibles:\n\n";
+    const filtrados = generos.filter(g =>
+      g.toLowerCase().includes(input)
+    );
 
-    generos.forEach(g => {
+    if (filtrados.length === 0) {
+      return bot.sendMessage(chatId, "No encontré coincidencias 😢");
+    }
+
+    let respuesta = "🎭 Coincidencias:\n\n";
+
+    filtrados.forEach(g => {
       respuesta += `- ${g}\n`;
     });
 
     bot.sendMessage(chatId, respuesta);
 
   } catch (error) {
-    console.error(error.message);
-    bot.sendMessage(chatId, "Error al obtener géneros 😵");
+    bot.sendMessage(chatId, "Error al buscar géneros 😵");
   }
 });
 
