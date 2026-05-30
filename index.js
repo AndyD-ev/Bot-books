@@ -55,6 +55,8 @@ res.json(libros);
   }
 });
 
+//.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
+
 
 //RUTA ESPECIAL PARA BUSCAR LIBRO 
 app.get("/libros/search", async (req, res) => {//ruta GET para obtener un libro por nombre, género, autor,id
@@ -137,7 +139,35 @@ app.get("/libros/search", async (req, res) => {//ruta GET para obtener un libro 
   }
 });
 
+//RUTA PARA OBTENER GÉNEROS
+app.get("/generos", async (req, res) => {
+  try {
+    const db = await notion.databases.retrieve({
+      database_id: process.env.DATABASE_ID
+    });
 
+    const generos = db.properties["Género"]
+      .multi_select
+      .options
+      .map(g => g.name);
+
+    res.json({
+      ok: true,
+      total: generos.length,
+      data: generos
+    });
+
+  } catch (error) {
+    console.error(error.message);
+
+    res.status(500).json({
+      error: "Error al obtener géneros"
+    });
+  }
+});
+
+
+//.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.
 
 
 
