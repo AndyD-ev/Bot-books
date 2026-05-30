@@ -436,6 +436,34 @@ bot.onText(/\/crear\s+(.+)/, async (msg, match) => { //\s+ “uno o más espacio
     generos: genero?.split("|").map(g => g.trim()),
     status: status?.trim()
   });
+
+
+
+
+  //____________________________________________________________________________
+//---------------------------OBTENER GÉNEROS------------------------------------
+//____________________________________________________________________________
+// -creación de un ENDPOINT  obtener los géneros desde  telegram
+bot.onText(/\/generos/, async (msg) => {
+  const chatId = msg.chat.id;
+
+  try {
+    const res = await axios.get("http://localhost:3000/generos");
+    const generos = res.data.data;
+
+    let respuesta = "🎭 Géneros disponibles:\n\n";
+
+    generos.forEach(g => {
+      respuesta += `- ${g}\n`;
+    });
+
+    bot.sendMessage(chatId, respuesta);
+
+  } catch (error) {
+    console.error(error.message);
+    bot.sendMessage(chatId, "Error al obtener géneros 😵");
+  }
+});
   
 
 
