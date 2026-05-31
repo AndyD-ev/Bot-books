@@ -235,10 +235,8 @@ app.post("/libros", async (req, res) => {
       autor: p.properties.Autor.rich_text[0]?.plain_text
     }))
   });
-//-------------------------------------------------------------------------
-//----------------------------------------------------------------------
-//----------------------------------------------------------------------
-  // Obtener géneros existentes en Notion
+}
+
 const db = await notion.databases.retrieve({
   database_id: process.env.DATABASE_ID
 });
@@ -246,7 +244,6 @@ const db = await notion.databases.retrieve({
 const generosExistentes =
   db.properties["Género"].multi_select.options.map(g => g.name);
 
-// Normalizar usando los nombres reales de Notion
 const generosFinales = (generos || []).map(g => {
   const encontrado = generosExistentes.find(
     existente => existente.toLowerCase() === g.trim().toLowerCase()
@@ -254,7 +251,6 @@ const generosFinales = (generos || []).map(g => {
 
   return encontrado || g.trim();
 });
-    }
 
 
 //........................
