@@ -187,7 +187,7 @@ app.post("/libros", async (req, res) => {
     //console.log("GENEROS:", generos);
 //......................
     // 🔥 1. NORMALIZAR (para evitar mayúsculas/minúsculas)
-    const libroNormalizado = libro?.toLowerCase().trim();
+    /*const libroNormalizado = libro?.toLowerCase().trim();
 
     // 🔍 2. BUSCAR SI YA EXISTE
     const existe = await notion.databases.query({
@@ -198,10 +198,24 @@ app.post("/libros", async (req, res) => {
           contains: libroNormalizado
         }
       }
+    });*/
+    const existe = await notion.databases.query({
+      database_id: process.env.DATABASE_ID
+    });
+
+    const libroExiste = existe.results.filter(page => {
+      const titulo =
+        page.properties.Libro.title[0]?.plain_text || "";
+
+      return (
+        titulo.trim().toLowerCase() ===
+        libro.trim().toLowerCase()
+      );
     });
 
     // 🚫 3. VALIDAR DUPLICADO
-    if (existe.results.length > 0 && !duplicado) {
+    /*if (existe.results.length > 0 && !duplicado) {*/
+    if (libroExiste.length > 0 && !duplicado) {
       console.log("⚠️ DUPLICADO DETECTADO");
 
       /*return res.json({
@@ -215,11 +229,31 @@ app.post("/libros", async (req, res) => {
     ok: false,
     duplicado: true,
     libro: libro,
-    existente: existe.results.map(p => ({
+    //existente: existe.results.map(p => ({
+      existente: libroExiste.map(p => ({
       libro: p.properties.Libro.title[0]?.plain_text,
       autor: p.properties.Autor.rich_text[0]?.plain_text
     }))
   });
+//-------------------------------------------------------------------------
+//----------------------------------------------------------------------
+//----------------------------------------------------------------------
+  // Obtener géneros existentes en Notion
+const db = await notion.databases.retrieve({
+  database_id: process.env.DATABASE_ID
+});
+
+const generosExistentes =
+  db.properties["Género"].multi_select.options.map(g => g.name);
+
+// Normalizar usando los nombres reales de Notion
+const generosFinales = (generos || []).map(g => {
+  const encontrado = generosExistentes.find(
+    existente => existente.toLowerCase() === g.trim().toLowerCase()
+  );
+
+  return encontrado || g.trim();
+});
     }
 
 
@@ -239,9 +273,14 @@ app.post("/libros", async (req, res) => {
         "Año": {
           select: { name: año },
         },
-        "Género": {
+        /*"Género": {
           multi_select: (generos || []).map((g) => ({ name: g })),
-        },  
+        },*/
+        "Género": {
+          multi_select: generosFinales.map((g) => ({
+            name: g
+          })),
+        },
         "Status": {
           select: { name: status },
         },
@@ -252,7 +291,8 @@ app.post("/libros", async (req, res) => {
     //res.json({ ok: true, data: response }); //respuesta o lo que devuelve postman 
     res.json({
     ok: true,
-    id: response.id_visual,
+    //id: response.id_visual,
+    id:response.id,
     //id: response.id,
     libro: libro,
     autor: autor,
@@ -271,7 +311,8 @@ app.post("/libros", async (req, res) => {
     const { id_visual } = req.params;
     const { libro, autor, año, generos, status } = req.body;
 
-    const [prefix, number] = id_visual.split("-");
+    //const [prefix, number] = id_visual.split("-");
+    const [, number] = id_visual.split("-");
 
     // 🔍 buscar libro
     const search = await notion.databases.query({
@@ -555,7 +596,8 @@ bot.on("callback_query", async (query) => {
       año: data.año.trim(),
       generos: data.genero.split("|").map(g => g.trim()),
       status: data.status.trim(),
-      forzar: true
+      //forzar: true
+      duplicado: true
     });
 
     bot.sendMessage(chatId, "✅ Añadido aunque esté duplicado");
