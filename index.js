@@ -182,9 +182,17 @@ app.post("/libros", async (req, res) => {
 
 
     //LOS NOMBRES LOS DEFINIMOS NOSOTROS, NO SON DEL NOTION
-    const { libro, autor, año, generos, status, duplicado } = req.body; //req.body es el json que enviamos desde postman/telegram
+    //const { libro, autor, año, generos, status, duplicado } = req.body; //req.body es el json que enviamos desde postman/telegram
       //lo de arriba, son los nombres provenientes del JSON (postma) 
     //console.log("GENEROS:", generos);
+
+    const { libro, autor, año, generos, status, duplicado } = req.body;
+
+    if (!libro) {
+      return res.status(400).json({
+        error: "El nombre del libro es obligatorio"
+      });
+    }
 //......................
     // 🔥 1. NORMALIZAR (para evitar mayúsculas/minúsculas)
     /*const libroNormalizado = libro?.toLowerCase().trim();
@@ -283,15 +291,22 @@ const generosFinales = (generos || []).map(g => {
       },
     });
 
-    console.log("Libro creado ");
-    //res.json({ ok: true, data: response }); //respuesta o lo que devuelve postman 
-    res.json({
+  console.log("Libro creado ");
+
+  // Obtener la página recién creada
+  const paginaCreada = await notion.pages.retrieve({
+    page_id: response.id
+  });
+
+  // Construir ID visual (LI-123)
+  const idVisual =
+    `${paginaCreada.properties.ID.unique_id.prefix}-${paginaCreada.properties.ID.unique_id.number}`;
+
+  res.json({
     ok: true,
-    //id: response.id_visual,
-    id:response.id,
-    //id: response.id,
-    libro: libro,
-    autor: autor,
+    id_visual: idVisual,
+    libro,
+    autor,
     mensaje: "Libro creado correctamente"
   });
 
@@ -347,10 +362,31 @@ const generosFinales = (generos || []).map(g => {
         select: { name: año }
       };
     }
+    let generosFinales = [];
+
+  if (generos) {
+
+    const db = await notion.databases.retrieve({
+      database_id: process.env.DATABASE_ID
+    });
+
+    const generosExistentes =
+      db.properties["Género"].multi_select.options.map(g => g.name);
+
+    generosFinales = generos.map(g => {
+
+      const encontrado = generosExistentes.find(
+        existente =>
+          existente.toLowerCase() === g.trim().toLowerCase()
+      );
+
+      return encontrado || g.trim();
+    });
+  }
 
     if (generos) {
       properties["Género"] = {
-        multi_select: generos.map((g) => ({ name: g }))
+        multi_select: generosFinales.map((g) => ({ name: g }))
       };
     }
 
@@ -490,6 +526,12 @@ bot.onText(/\/crear\s+(.+)/, async (msg, match) => { //\s+ “uno o más espacio
 
   //Asignar variables
   const [libro, autor, año, genero, status] = partes;
+  if (!libro?.trim()) {
+  return bot.sendMessage(
+    chatId,
+    "❌ Debes indicar el nombre del libro.\n\nEjemplo:\n/crear Harry Potter, Rowling, 1997, Fantasía, Leído"
+  );
+}
 
   //Hacer petición a la API para crear el libro
   try {
