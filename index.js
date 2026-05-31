@@ -173,6 +173,7 @@ app.get("/generos", async (req, res) => {
 
 
 
+
 // Crear libro --creación de un ENDPOINT  Enviar datos desde telegram/postman
 app.post("/libros", async (req, res) => {
   try {
@@ -409,42 +410,31 @@ bot.onText(/\/buscar (.+)/, async (msg, match) => {
 
 const pendientes ={};  //creación de una memoria
 
+//____________________________________________________________________________
+//---------------------------OBTENER GÉNEROS----------------------------------
+//____________________________________________________________________________
 
-//____________________________________________________________________________
-//---------------------------OBTENER GÉNEROS------------------------------------
-//____________________________________________________________________________
-// -creación de un ENDPOINT  obtener los géneros desde  telegram
-bot.onText(/\/genero (.+)/, async (msg, match) => {
+bot.onText(/\/generos/, async (msg) => {
   const chatId = msg.chat.id;
-  const input = match[1].toLowerCase();
 
   try {
     const res = await axios.get("http://localhost:3000/generos");
+
     const generos = res.data.data;
 
-    const filtrados = generos.filter(g =>
-      g.toLowerCase().includes(input)
-    );
+    let respuesta = "🎭 Géneros disponibles:\n\n";
 
-    if (filtrados.length === 0) {
-      return bot.sendMessage(chatId, "No encontré coincidencias 😢");
-    }
-
-    let respuesta = "🎭 Coincidencias:\n\n";
-
-    filtrados.forEach(g => {
-      respuesta += `- ${g}\n`;
+    generos.forEach((g) => {
+      respuesta += `• ${g}\n`;
     });
 
     bot.sendMessage(chatId, respuesta);
 
   } catch (error) {
-    bot.sendMessage(chatId, "Error al buscar géneros 😵");
+    console.error(error.message);
+    bot.sendMessage(chatId, "Error al obtener géneros 😵");
   }
 });
-
-
-
 
 //____________________________________________________________________________
 //---------------------------CREAR LIBROS------------------------------------
@@ -473,6 +463,7 @@ bot.onText(/\/crear\s+(.+)/, async (msg, match) => { //\s+ “uno o más espacio
     generos: genero?.split("|").map(g => g.trim()),
     status: status?.trim()
   });
+
 
 // 🔥 AQUÍ ESTÁ LA CLAVE
 if (!res.data.ok) {
@@ -531,7 +522,7 @@ bot.on("message", async (msg) => {
       año: data.año.trim(),
       generos: data.genero.split("|").map(g => g.trim()),
       status: data.status.trim(),
-      forzar: true
+      duplicado: true
     });
 
     bot.sendMessage(chatId, "✅ Añadido nuevamente con éxito");
